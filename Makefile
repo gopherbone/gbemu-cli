@@ -14,7 +14,7 @@ CFLAGS := -std=gnu11 -O2 -MMD -MP -D_GNU_SOURCE -DGB_INTERNAL -DGB_VERSION='"$(V
 LDFLAGS := -lm -lz
 
 BIN := $(BUILD)/gbemu
-DIST_NAME := sameboy-cli-$(VERSION)
+DIST_NAME := gbemu-cli-$(VERSION)
 
 all: $(BIN)
 
