@@ -320,6 +320,50 @@ def main():
 
     g.quit()
 
+    # ---------------- rom.search ----------------
+    g = GBEmu(binary)
+    g.ping()
+    print("\n== rom.search ==")
+    # make a private ROM copy with two planted needles in different banks
+    rs_rom = os.path.join(os.path.dirname(rom_path), "romsearch_test.gb")
+    rom_bytes = bytearray(open(rom_path, "rb").read())
+    O1 = 0x4010  # bank 1
+    O2 = 0x4521  # bank 1
+    O0 = 0x0123  # bank 0 (padding-safe deterministic ROM)
+    for off in (O1, O2, O0):
+        rom_bytes[off:off + 4] = b"\xde\xad\xbe\xef"
+    open(rs_rom, "wb").write(bytes(rom_bytes))
+    g.load_rom(rs_rom, model="dmg", boot="builtin", seed=1)
+
+    r = g.rom_search("deadbeef")
+    offs = sorted(int(x["off"], 16) for x in r["results"])
+    check("rom.search finds all planted occurrences", r["count"] == 3 and offs == sorted([O0, O1, O2]), (r["count"], offs))
+
+    clean = lambda s: int(s.replace("$", ""), 16)  # noqa: E731
+    bank_set = set(x["bank"] for x in r["results"])
+    addrs_ok = all(clean(x["addr"]) == (clean(x["off"]) & 0x3FFF if x["bank"] == 0 else 0x4000 + (clean(x["off"]) & 0x3FFF)) for x in r["results"])
+    check("rom.search bank/addr mapping", bank_set == {0, 1} and addrs_ok, (bank_set, r["results"]))
+
+    r = g.rom_search("deadbeef", bank_hi=1, bank_lo=1)
+    check("rom.search bank filter", r["count"] == 2 and all(x["bank"] == 1 for x in r["results"]), r["count"])
+
+    r = g.rom_search("deadbeef", mask="ff00ffff")  # wildcard 2nd byte
+    check("rom.search mask wildcard", r["count"] == 3, r["count"])
+
+    r = g.rom_search("de ad be ef")  # whitespace-ignored form
+    check("rom.search whitespace form", r["count"] == 3, r["count"])
+
+    for name, p in [("missing bytes", {}), ("odd hex", {"bytes": "abc"}),
+                    ("mask mismatch", {"bytes": "deadbeef", "mask": "ff00"}),
+                    ("bad bank", {"bytes": "dead", "bank_lo": 99, "bank_hi": 100})]:
+        try:
+            g.cmd("rom.search", timeout=5, **p)
+            check(f"rom.search error: {name}", False, "no error raised")
+        except Exception:
+            check(f"rom.search error: {name}", True)
+
+    g.quit()
+
     print()
     if FAILS:
         print(f"SMOKE FAILED: {len(FAILS)} failure(s): {FAILS}")

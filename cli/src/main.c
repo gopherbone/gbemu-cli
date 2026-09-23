@@ -340,6 +340,7 @@ static const struct { const char *name; bool (*fn)(const jval_t *); bool needs_r
     {"mem.diff", cmd_mem_diff, true},
     {"mem.search", cmd_mem_search, true},
     {"mem.search.reset", cmd_mem_search_reset, true},
+    {"rom.search", cmd_rom_search, true},
     {"symbols.load", cmd_symbols_load, true},
     {"symbols.clear", cmd_symbols_clear, true},
     {"symbols.resolve", cmd_symbol_resolve, true},

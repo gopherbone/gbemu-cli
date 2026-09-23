@@ -32,6 +32,19 @@ with GBEmu("build/gbemu") as g:
    Repeat; `count` shrinks each time. (`wide=true` for 16-bit values.)
 3. Verify: `watch.add {"addr": hit, "access": "w"}` then play; it should stop on change.
 
+### ROM literal search (citations, record bytes, art blocks)
+```
+rom.search {"bytes": "f2 8c 8d fd"}            # whole cart, file order
+rom.search {"bytes": "deadbeef", "mask": "ff00ffff"}   # de??beef
+rom.search {"bytes": "f3 89 8a", "bank_lo": 24, "bank_hi": 27}
+```
+Returns `{count, results:[{off, bank, addr}]}` (file offsets). NOTE for
+stream-record hunting: served text streams carry inline controls (F0-F2
+sticky page prefixes, FA/FC segment markers, FD terminators, FB/E8
+fill-fields) — a raw byte needle is the *mechanism*; the caller owns
+page-state/context interpretation. Mask (`0`-nibbles) covers single-byte
+uncertainty (`f2 8? 8d`).
+
 ### Trace what code touches WRAM $C100
 ```
 watch.add {"addr": "$c100", "access": "w", "stop": false}     # count hits, continue

@@ -450,3 +450,108 @@ bool cmd_mem_search_reset(const jval_t *p)
     jw_raw(&CTX.out, "{\"reset\":true}");
     return true;
 }
+
+/* ---------------- rom.search: literal byte search over the cart image ---------------- */
+
+/* Decode a hex string, ignoring ' ' and '_' separators. Returns malloc'd bytes
+   or NULL on error (err set). *out_len receives the byte count. */
+static uint8_t *decode_hex_flex(const char *s, size_t *out_len)
+{
+    size_t cap = strlen(s) / 2 + 2;
+    uint8_t *buf = malloc(cap);
+    size_t n = 0;
+    if (!buf) { set_err("oom"); return NULL; }
+    for (size_t i = 0; s[i];) {
+        if (s[i] == ' ' || s[i] == '_') { i++; continue; }
+        uint8_t hi = hex_nibble(s[i]);
+        uint8_t lo = 0xFF;
+        if (hi == 0xFF) { free(buf); set_err("bad hex in needle (char '%c')", s[i]); return NULL; }
+        if (!s[i + 1]) { free(buf); set_err("odd-length hex"); return NULL; }
+        lo = hex_nibble(s[i + 1]);
+        if (lo == 0xFF) { free(buf); set_err("bad hex in needle (char '%c')", s[i + 1]); return NULL; }
+        buf[n++] = (uint8_t)((hi << 4) | lo);
+        i += 2;
+    }
+    if (n == 0) { free(buf); set_err("hex string is empty"); return NULL; }
+    *out_len = n;
+    return buf;
+}
+
+bool cmd_rom_search(const jval_t *p)
+{
+    const char *bytes_s = j_str(p, "bytes", NULL);
+    if (!bytes_s) { set_err("missing 'bytes' (hex string, whitespace-ignored)"); return false; }
+    size_t nlen;
+    uint8_t *needle = decode_hex_flex(bytes_s, &nlen);
+    if (!needle) return false;
+
+    uint8_t *maskb = NULL;
+    const char *mask_s = j_str(p, "mask", NULL);
+    if (mask_s) {
+        size_t mlen;
+        maskb = decode_hex_flex(mask_s, &mlen);
+        if (!maskb) { free(needle); return false; }
+        if (mlen != nlen) {
+            free(needle); free(maskb);
+            set_err("'mask' length (%zu bytes) must match 'bytes' (%zu bytes)", mlen, nlen);
+            return false;
+        }
+    }
+
+    long bank_lo = j_int(p, "bank_lo", -1);
+    long bank_hi = j_int(p, "bank_hi", -1);
+    long max_results = j_int(p, "max", 512);
+    if (max_results < 1) max_results = 1;
+    if (max_results > 8192) max_results = 8192;
+
+    const uint8_t *rom = CTX.gb->rom;
+    size_t rom_size = CTX.gb->rom_size;
+    if (!rom || rom_size == 0) { free(needle); free(maskb); set_err("no cart ROM loaded"); return false; }
+    size_t nbanks = rom_size / 0x4000;
+    if (nbanks == 0) nbanks = 1; /* sub-16K test images */
+    long lo = 0, hi = (long)nbanks - 1;
+    if (bank_lo >= 0) lo = bank_lo;
+    if (bank_hi >= 0) hi = bank_hi;
+    if (lo < 0 || hi < lo || (size_t)hi >= nbanks) {
+        free(needle); free(maskb);
+        set_err("bank range [%ld,%ld] out of bounds (ROM has %zu banks)", lo, hi, nbanks);
+        return false;
+    }
+
+    size_t lo_off = (size_t)lo * 0x4000;
+    size_t hi_end = ((size_t)hi + 1) * 0x4000;
+    if (hi_end > rom_size) hi_end = rom_size;
+
+    jw_t *w = &CTX.out;
+    size_t found = 0, printed = 0;
+    jw_fmt(w, "{\"count\":");
+    /* two-pass: count first so count is the full match total, then print up to max */
+    for (size_t i = lo_off; i + nlen <= hi_end; i++) {
+        bool match = true;
+        for (size_t k = 0; k < nlen; k++) {
+            uint8_t m = maskb ? maskb[k] : 0xFF;
+            if ((rom[i + k] & m) != (needle[k] & m)) { match = false; break; }
+        }
+        if (match && (i + nlen - 1) / 0x4000 == i / 0x4000) found++; /* skip bank-straddlers */
+    }
+    jw_fmt(w, "%zu,\"results\":[", found);
+    if (found) {
+        for (size_t i = lo_off; i + nlen <= hi_end && printed < (size_t)max_results; i++) {
+            bool match = true;
+            for (size_t k = 0; k < nlen; k++) {
+                uint8_t m = maskb ? maskb[k] : 0xFF;
+                if ((rom[i + k] & m) != (needle[k] & m)) { match = false; break; }
+            }
+            if (!match || (i + nlen - 1) / 0x4000 != i / 0x4000) continue;
+            size_t bank = i / 0x4000;
+            size_t off_in_bank = i % 0x4000;
+            uint16_t addr = bank == 0 ? (uint16_t)off_in_bank : (uint16_t)(0x4000 + off_in_bank);
+            jw_fmt(w, "%s{\"off\":\"0x%zx\",\"bank\":%zu,\"addr\":\"$%04x\"}",
+                   printed ? "," : "", i, bank, addr);
+            printed++;
+        }
+    }
+    jw_raw(w, "]}");
+    free(needle); free(maskb);
+    return true;
+}

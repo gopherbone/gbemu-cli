@@ -233,6 +233,7 @@ bool cmd_mem_capture(const jval_t *params);
 bool cmd_mem_diff(const jval_t *params);
 bool cmd_mem_search(const jval_t *params);
 bool cmd_mem_search_reset(const jval_t *params);
+bool cmd_rom_search(const jval_t *params);
 bool cmd_symbols_load(const jval_t *params);
 bool cmd_symbols_clear(const jval_t *params);
 bool cmd_symbol_resolve(const jval_t *params);
