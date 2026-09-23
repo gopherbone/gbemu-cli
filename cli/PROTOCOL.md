@@ -130,6 +130,7 @@ reset by `load_rom`.
 | `mem.diff` | `a` (capture name), `b` (name or `"live"`), `max` | `{changes:[{region,off,addr,bank,a,b}],truncated}` |
 | `mem.search` | `filter` (expression over `new`,`old`, e.g. `"new != old"`, `"new == 5 && new == old + 1"`), `wide` (16-bit LE), `max` | `{count, results:[{addr,bank,value}]}` — SameBoy cheat-search semantics: chained filters narrow progressively; first filter compares against zero baseline |
 | `mem.search.reset` | — | reset search state |
+| `rom.search` | `bytes` (hex needle, whitespace ignored), `mask` (optional same-length hex; 1-bits compared, 0-bits wildcard), `bank_lo`/`bank_hi` (inclusive file-bank filter), `max` (default 512, cap 8192) | `{count, results:[{off,bank,addr}]}` — literal search over the whole cart ROM in file order. `off` = file offset (hex), `addr` = banked map address (`bank==0: off; else 0x4000+(off%0x4000)`). Matches straddling a bank boundary are skipped (not contiguously addressable). `count` = total matches; `results` capped at `max`. |
 
 Raw regions: `rom`, `vram`, `wram`, `cart_ram`, `oam`, `hram`, `bootrom`, `bgp`,
 `obp`, `io`.

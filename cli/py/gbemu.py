@@ -164,6 +164,25 @@ class GBEmu:
     def mem_search_reset(self):
         return self.cmd("mem.search.reset")
 
+    def rom_search(self, bytes_hex, mask=None, bank_lo=None, bank_hi=None, max=512):
+        """Literal byte search over the whole cart ROM (file order).
+
+        bytes_hex: hex string of the needle (whitespace ignored), e.g.
+        "f28c8d" or "f2 8c 8d fd". mask: optional same-length hex string,
+        1-bits compared, 0-bits wildcard (e.g. bytes="deadbeef",
+        mask="ff00ffff" matches de??beef). Returns {"count": N,
+        "results": [{"off": file offset hex, "bank": int, "addr": "$xxxx"}]}.
+        Bank-straddling matches are skipped (not addressable contiguously).
+        """
+        p = {"bytes": bytes_hex, "max": max}
+        if mask:
+            p["mask"] = mask
+        if bank_lo is not None:
+            p["bank_lo"] = bank_lo
+        if bank_hi is not None:
+            p["bank_hi"] = bank_hi
+        return self.cmd("rom.search", **p)
+
     def step(self, n=1):
         return self.cmd("step", n=n)
 
