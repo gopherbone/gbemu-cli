@@ -261,6 +261,19 @@ bool cmd_input_tap(const jval_t *params);
 bool cmd_input_script(const jval_t *params);
 uint8_t input_parse_keys(const jval_t *keys, bool *ok);
 
+/* sanitize.c */
+bool sanitize_active(void);
+bool sanitize_frozen_gate(void);
+void sanitize_on_write(uint16_t addr, uint8_t value);
+void sanitize_on_read(uint16_t addr, uint8_t value);
+void sanitize_on_exec(uint16_t pc, uint8_t opcode);
+void sanitize_reset_all(void);
+void sanitize_resync(void);
+bool cmd_sanitize_start(const jval_t *params);
+bool cmd_sanitize_stop(const jval_t *params);
+bool cmd_sanitize_clear(const jval_t *params);
+bool cmd_sanitize_report(const jval_t *params);
+
 /* sandbox.c */
 bool cmd_cpu_init(const jval_t *params);
 bool cmd_cpu_load(const jval_t *params);

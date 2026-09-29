@@ -17,11 +17,12 @@ bool need_exec_cb(void)
        pc (the pc register is already past the instruction by access time) */
     for (int i = 0; i < MAX_BREAKPOINTS; i++)
         if (CTX.bps[i].used && CTX.bps[i].enabled && CTX.bps[i].kind == BP_MEM) return true;
-    return CTX.trace.active || CTX.cov_active;
+    return CTX.trace.active || CTX.cov_active || sanitize_active();
 }
 
 bool need_mem_cbs(void)
 {
+    if (sanitize_active()) return true;
     if (CTX.trace.active && CTX.trace.with_mem) return true;
     for (int i = 0; i < MAX_WATCHPOINTS; i++)
         if (CTX.wps[i].used && CTX.wps[i].enabled) return true;
@@ -217,6 +218,7 @@ static uint8_t read_cb(GB_gameboy_t *gb, uint16_t addr, uint8_t data)
 {
     (void)gb;
     mem_access_common(addr, data, false);
+    sanitize_on_read(addr, data);
     return data;
 }
 
@@ -224,6 +226,7 @@ static bool write_cb(GB_gameboy_t *gb, uint16_t addr, uint8_t data)
 {
     (void)gb;
     mem_access_common(addr, data, true);
+    sanitize_on_write(addr, data);
     return true; /* allow the write */
 }
 
@@ -233,6 +236,7 @@ static void exec_cb(GB_gameboy_t *gb, uint16_t pc, uint8_t opcode)
     CTX.cur_instr_pc = pc; /* latch for mem-predicate pc gating + hit reasons */
     CTX.mem_cap_n = 0;
     CTX.mem_cap_pc = pc;
+    sanitize_on_exec(pc, opcode);
     if (CTX.trace.active) trace_push(pc, opcode);
     if (CTX.cov_active && pc < 0x8000 && CTX.cov_bits) {
         uint16_t bank = pc < 0x4000 ? ext_rom0_bank(CTX.gb) : ext_rom_bank(CTX.gb);
@@ -280,6 +284,23 @@ static bool bp_precheck(void)
         }
         if (!fire) continue;
         bp->hits++;
+        if (!bp->stop) {
+            /* count-only PC breakpoint: log the hit, never halt. (Before this
+               fix `stop:false` was parsed but ignored for PC breakpoints: the
+               run halted mid-frame, harnesses resumed, and an in-flight
+               input.press was cut short — the "count-only ROM0-hot PC bps
+               eat input presses" defect.) */
+            if (!CTX.bp_hits) CTX.bp_hits = calloc(BP_HITLOG_CAP, sizeof(bp_hit_t));
+            if (CTX.bp_hits) {
+                bp_hit_t *h = &CTX.bp_hits[CTX.bp_hits_head];
+                h->bp = (uint32_t)i; h->pc = pc; h->addr = pc; h->value = 0;
+                h->is_write = 0; h->effbank = (uint16_t)eff_bank_for(pc);
+                CTX.bp_hits_head = (CTX.bp_hits_head + 1) % BP_HITLOG_CAP;
+                if (CTX.bp_hits_count < BP_HITLOG_CAP) CTX.bp_hits_count++;
+                CTX.bp_hits_total++;
+            }
+            continue;
+        }
         CTX.stop_pending = true;
         snprintf(CTX.stop_reason, sizeof(CTX.stop_reason), "breakpoint %d at $%04X", bp->id, pc);
         CTX.last_stop_pc = pc;
@@ -316,6 +337,7 @@ static long long now_ms(void)
 /* Executes one instruction. Returns false if a stop condition was hit (before or after exec). */
 static bool run_one(void)
 {
+    if (sanitize_frozen_gate()) return false;
     if (CTX.stop_pending) return false;
     if (bp_precheck() || until_precheck()) return false;
 
@@ -744,9 +766,17 @@ bool cmd_trace_dump(const jval_t *p)
     jw_fmt(w, "{\"total\":%llu,\"dropped\":%llu,\"entries\":[",
            (unsigned long long)t->total, (unsigned long long)t->dropped);
     long n = t->count < limit ? t->count : limit;
-    /* newest last */
+    /* window selection (newest last in the output either way):
+       default = the OLDEST `limit` entries (legacy); tail:true = the NEWEST
+       `limit` entries; offset = skip that many entries from the chosen end */
+    bool tail = j_bool(p, "tail", false);
+    long offset = j_int(p, "offset", 0);
+    if (offset < 0) offset = 0;
+    if (offset > (long)t->count) offset = (long)t->count;
+    if (n > (long)t->count - offset) n = (long)t->count - offset;
+    long first = tail ? (long)t->count - offset - n : offset;
     for (long i = 0; i < n; i++) {
-        uint32_t idx = (t->head + t->cap - t->count + (uint32_t)i) % t->cap;
+        uint32_t idx = (t->head + t->cap - t->count + (uint32_t)(first + i)) % t->cap;
         trace_entry_t *e = &t->ring[idx];
         jw_fmt(w, "%s{\"pc\":\"%04x\",\"bank\":%d,\"op\":\"%02x\"",
                i ? "," : "", e->pc, e->bank, e->opcode);

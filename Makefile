@@ -32,6 +32,7 @@ bootroms:
 test: $(BIN)
 	python3 cli/tests/make_test_rom.py $(BUILD)/test_rom.gb $(BUILD)/test_rom.json --sym $(BUILD)/test_rom.sym
 	python3 cli/tests/smoke.py $(BIN) $(BUILD)/test_rom.gb $(BUILD)/test_rom.json
+	python3 cli/tests/sanitize_test.py $(BIN)
 
 clean:
 	rm -rf $(BUILD)

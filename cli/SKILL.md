@@ -88,6 +88,20 @@ wall-clock).
 `screen.capture {"path": "out.png"}` (or base64), `video.tilemap`, `video.tiles`,
 `video.sprites`, `screen.palette` for VRAM-level introspection.
 
+### Memory-safety sweep of a patched ROM (text corruption / crashes)
+```
+sanitize.start {"selfid": true}                 # observe everything, stop nowhere
+... ride the route (input.script / run.frames) ...
+sanitize.report {"max_sites": 400}              # per-(class,pc,bank) sites
+```
+Run the same route on the ORIGINAL ROM and diff the site sets: sites present
+only on the patched ROM are yours. To root-cause one, re-ride with
+`{"stop_on": ["<class>"], "freeze": true}` + `trace.start {with_regs,with_mem}`,
+then `regs.get` / `backtrace` / `trace.dump {"tail": true}` at the frozen state
+(`offset` pages further back). Count-only `break.add {type:"mem", access:"w",
+addr, stop:false}` + `break.log` reconstructs pointer histories without
+perturbing the flow.
+
 ### Validate an ASM routine in CI (no ROM needed)
 Use sandbox mode — a bare CPU on a flat 32KB ROM buffer, deterministic and fast:
 

@@ -21,7 +21,7 @@
 ctx_t CTX;
 static uint32_t framebuffer[256 * 224];
 
-#define GBEMU_VERSION "0.1.0"
+#define GBEMU_VERSION "0.1.1"
 
 void set_err(const char *fmt, ...)
 {
@@ -128,6 +128,7 @@ void free_analysis_state(void)
     CTX.script_len = CTX.script_pos = 0;
     CTX.key_mask = 0;
     CTX.stop_pending = false;
+    sanitize_reset_all();
 }
 
 static const gbemu_model_t models[] = {
@@ -372,6 +373,10 @@ static const struct { const char *name; bool (*fn)(const jval_t *); bool needs_r
     {"input.press", cmd_input_press, true},
     {"input.tap", cmd_input_tap, true},
     {"input.script", cmd_input_script, true},
+    {"sanitize.start", cmd_sanitize_start, true},
+    {"sanitize.stop", cmd_sanitize_stop, true},
+    {"sanitize.clear", cmd_sanitize_clear, true},
+    {"sanitize.report", cmd_sanitize_report, true},
     {"cpu.init", cmd_cpu_init, false},
     {"cpu.load", cmd_cpu_load, true},
     {"cpu.exec", cmd_cpu_exec, true},

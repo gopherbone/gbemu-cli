@@ -13,10 +13,16 @@ for agent-oriented analysis recipes.
 
 ## Build
 
+> macOS toolchain trap (observed 2026-09-28, CLT clang 17 + MacOSX27.0 SDK):
+> the link fails with `tapi error: ... unknown architecture` in the SDK's
+> `.tbd` stubs, and the failed link DELETES the existing `build/gbemu` that
+> downstream harnesses run. Link against an older installed SDK instead:
+> `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk make`.
+
 ```sh
 make              # builds build/gbemu from SameBoy/Core + cli/src (needs clang/gcc + libz)
 make bootroms     # vendors boot ROM binaries into cli/bootroms (RGBDS, or download fallback)
-make test         # builds a deterministic test ROM and runs the smoke suite (python3)
+make test         # builds a deterministic test ROM and runs the smoke + sanitizer suites (python3)
 ```
 
 Boot ROMs: `dmg_boot.bin` etc. are looked up in `cli/bootroms/` (override with

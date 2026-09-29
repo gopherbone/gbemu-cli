@@ -61,6 +61,7 @@ bool cmd_snapshot_load(const jval_t *p)
     }
     CTX.stop_pending = false;
     CTX.last_stop_valid = false;
+    sanitize_resync();
     install_analysis_hooks();
     jw_fmt(&CTX.out, ",\"pc\":\"%04x\"}", GB_get_registers(CTX.gb)->pc);
     return true;
@@ -126,6 +127,7 @@ bool cmd_rewind_pop(const jval_t *p)
     }
     CTX.stop_pending = false;
     CTX.last_stop_valid = false;
+    sanitize_resync();
     jw_fmt(&CTX.out, "{\"rewound\":%ld,\"pc\":\"%04x\",\"frame\":%llu}",
            popped, GB_get_registers(CTX.gb)->pc, (unsigned long long)CTX.frame_count);
     if (CTX.frame_count >= (uint64_t)popped) CTX.frame_count -= popped;

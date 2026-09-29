@@ -83,6 +83,35 @@ reset by `load_rom`.
 | `break.del` | `id` | `{deleted}` |
 | `break.clear` | — | `{cleared}` |
 
+PC breakpoints honor `stop:false` (count-only): the hit is counted and appended
+to the `break.log` ring, execution never halts. (Before gbemu 0.1.1 the flag
+was parsed but ignored for PC breakpoints — the run halted mid-frame and an
+in-flight `input.press` was cut short.)
+
+### Sanitizer (runtime memory-safety checks)
+| cmd | params | result |
+|---|---|---|
+| `sanitize.start` | `classes` (array; default all), `stop_on` (array of classes that halt the run; default none), `freeze` (default false: once a `stop_on` event fires, every later run command executes nothing and re-reports the stop until `sanitize.clear`/`sanitize.stop` — harnesses cannot silently resume past the fault), `selfid` (default false; enables `irq_selfid` + `map_selfid_ime` for games whose ISRs save/restore the ROM bank via the `[$4000]`-holds-its-own-bank-number idiom), `exec_allow` (`[[lo,hi],...]` non-ROM ranges where execution is legal; default `[[$ff80,$fffe]]`), `sp_lo`+`sp_hi` (enables `sp_range`) | `{active, classes, selfid_bad_banks, banks}` |
+| `sanitize.report` | `classes` (filter), `max_sites` (200), `max_events` (64) | `{active, frozen, counts:{class:n}, rets_unmatched, sites:[{class,pc,bank,count,first_frame,first_instr,addr,value,aux,ly,mode}], events:[... first N in order]}` |
+| `sanitize.clear` | — | resets counts/sites/events, the shadow call stack and any freeze |
+| `sanitize.stop` | — | disarms |
+
+Classes: `vram_write_blocked` (CPU write to VRAM while the PPU owns it — the
+hardware DROPS it), `vram_read_blocked` (read returns $FF), `oam_write_blocked`,
+`pal_write_blocked` (CGB $FF69/$FF6B in mode 3), `mbc_stray` (MBC5: write to
+$6000-$7FFF, nonzero to $3000-$3FFF, bank ≥ cart banks, SRAM bank ≥ cart RAM
+banks), `echo_write` ($E000-$FDFF, $FEA0-$FEFF), `sram_disabled` (cart RAM
+access while disabled), `exec_ram` (fetch outside ROM and `exec_allow`),
+`illegal_opcode`, `ret_mismatch` (ret/reti resumes somewhere other than what
+the matching call/rst/interrupt pushed — the return address was overwritten),
+`sp_range`, `irq_selfid` (interrupt dispatched while the mapped ROMX bank's
+first byte ≠ its bank number; `addr` = vector, `value` = bank, `pc` = the
+interrupted resume address), `map_selfid_ime` (such a bank mapped with IME=1).
+Site `pc` = the instruction performing the access (latched). The sanitizer is a
+pure observer: armed without `stop_on` it does not alter emulation (verified:
+the crazyrichman fresh-flow beats land on the identical frames armed/unarmed).
+`snapshot.load` / `rewind.pop` resync the shadow call stack.
+
 ### Watchpoints (memory access)
 | cmd | params | result |
 |---|---|---|
@@ -94,7 +123,7 @@ reset by `load_rom`.
 |---|---|---|
 | `trace.start` | `max` (ring capacity, default 65536, max 4M), `with_regs`, `with_mem` (up to 4 accesses/instr), `rom_only`, `pc_lo`,`pc_hi` | `{tracing, capacity}` |
 | `trace.stop` | — | `{tracing:false, total, dropped}` |
-| `trace.dump` | `limit` (default 1000, max 100000) | `{total, dropped, entries:[{pc,bank,op,regs?,mem?,symbol?}]}` |
+| `trace.dump` | `limit` (default 1000, max 100000), `tail` (default false: the OLDEST `limit` entries; true: the NEWEST), `offset` (skip that many entries from the chosen end — page back through a 4M ring with `tail:true, offset:k*limit`) | `{total, dropped, entries:[{pc,bank,op,regs?,mem?,symbol?}]}` (oldest first within the window) |
 
 `mem` entries: `["r"|"w", "addr_hex", "value_hex"]`. Note `bank` for ROM fetches;
 `symbol` resolves via loaded .sym.
